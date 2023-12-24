@@ -13,20 +13,16 @@ type SearchData struct {
 }
 
 type SearchResult struct {
-	ID          string
-	ResultType  string
-	Image       string
-	Title       string
-	Description string
+	ID string
+	// ResultType string
+	Image string
+	Title string
+	// Description string
 }
 
 type Client struct {
 	BaseURL string
 	HTTP    http.Client
-}
-
-func NewClient() Client {
-	return Client{}
 }
 
 func (c Client) SearchTitle(expr string) (data SearchData, err error) {
@@ -38,6 +34,11 @@ func (c Client) SearchTitle(expr string) (data SearchData, err error) {
 	vals.Set("q", expr)
 	req.URL.RawQuery = vals.Encode()
 
-	_, err = c.HTTP.Do(req)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
 	return SearchData{}, err
 }

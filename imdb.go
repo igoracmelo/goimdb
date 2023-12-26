@@ -16,11 +16,38 @@ type SearchData struct {
 }
 
 type SearchResult struct {
-	ID string
-	// ResultType string
-	Image string
+	ID          string
+	ResultType  string
+	Image       string
+	Title       string
+	Description string
+}
+
+type SearchTitleData struct {
+	Results []SearchTitleResult
+}
+
+type SearchTitleResult struct {
+	ID   string
+	Type string
+
+	// Optional.
+	TrailerID string
+
 	Title string
-	// Description string
+
+	// Optional.
+	Image string
+
+	// Optional.
+	Description string
+	Genres      []string
+	Rating      float64
+	VoteCount   int
+	ReleaseYear int
+
+	// Optional.
+	EndYear int
 }
 
 type Client struct {
@@ -28,10 +55,15 @@ type Client struct {
 	HTTP    http.Client
 }
 
-func (c Client) SearchTitle(expr string) (data SearchData, err error) {
+func NewClient() Client {
+	return Client{
+		BaseURL: "https://www.imdb.com",
+	}
+}
+
+func (c Client) SearchTitle(expr string) (data SearchTitleData, err error) {
 	vals := url.Values{}
-	vals.Set("q", expr)
-	vals.Set("s", "tt") // search type 'title' I guess
+	vals.Set("title", expr)
 
 	var b []byte
 
@@ -41,7 +73,7 @@ func (c Client) SearchTitle(expr string) (data SearchData, err error) {
 		b = []byte(h.Text)
 	})
 
-	err = coll.Visit(c.BaseURL + "/find/?" + vals.Encode())
+	err = coll.Visit(c.BaseURL + "/search/title/?" + vals.Encode())
 	if err != nil {
 		return
 	}
@@ -49,22 +81,39 @@ func (c Client) SearchTitle(expr string) (data SearchData, err error) {
 	dto := struct {
 		Props struct {
 			PageProps struct {
-				TitleResults struct {
-					Results []struct {
-						ID                    string `json:"id"`
-						ImageType             string `json:"imageType"`
-						TitleNameText         string `json:"titleNameText"`
-						TitlePosterImageModel struct {
-							Caption   string `json:"caption"`
-							MaxHeight int    `json:"maxHeight"`
-							MaxWidth  int    `json:"maxWidth"`
-							URL       string `json:"url"`
-						} `json:"titlePosterImageModel"`
-						TitleReleaseText string   `json:"titleReleaseText"`
-						TitleTypeText    string   `json:"titleTypeText"`
-						TopCredits       []string `json:"topCredits"`
-					} `json:"results"`
-				} `json:"titleResults"`
+				SearchResults struct {
+					TitleResults struct {
+						TitleListItems []struct {
+							Creators     []any    `json:"creators"`
+							Directors    []any    `json:"directors"`
+							EndYear      int      `json:"endYear"`
+							Genres       []string `json:"genres"`
+							TitleID      string   `json:"titleId"`
+							TitleText    string   `json:"titleText"`
+							Plot         string   `json:"plot"`
+							PrimaryImage struct {
+								Caption string `json:"caption"`
+								ID      string `json:"id"`
+								Height  int    `json:"height"`
+								URL     string `json:"url"`
+								Width   int    `json:"width"`
+							} `json:"primaryImage"`
+							RatingSummary struct {
+								AggregateRating float64 `json:"aggregateRating"`
+								VoteCount       int     `json:"voteCount"`
+							} `json:"ratingSummary"`
+							ReleaseYear int `json:"releaseYear"`
+							Runtime     int `json:"runtime"`
+							TitleType   struct {
+								CanHaveEpisodes bool   `json:"canHaveEpisodes"`
+								ID              string `json:"id"`
+								Text            string `json:"text"`
+							} `json:"titleType"`
+							TopCast   []any  `json:"topCast"`
+							TrailerID string `json:"trailerId"`
+						} `json:"titleListItems"`
+					} `json:"titleResults"`
+				} `json:"searchResults"`
 			} `json:"pageProps"`
 		} `json:"props"`
 	}{}
@@ -74,11 +123,19 @@ func (c Client) SearchTitle(expr string) (data SearchData, err error) {
 		return
 	}
 
-	for _, r := range dto.Props.PageProps.TitleResults.Results {
-		data.Results = append(data.Results, SearchResult{
-			ID:    r.ID,
-			Image: r.TitlePosterImageModel.URL,
-			Title: r.TitleNameText,
+	for _, i := range dto.Props.PageProps.SearchResults.TitleResults.TitleListItems {
+		data.Results = append(data.Results, SearchTitleResult{
+			ID:          i.TitleID,
+			Type:        i.TitleType.ID,
+			Image:       i.PrimaryImage.URL,
+			Title:       i.TitleText,
+			Description: i.Plot,
+			TrailerID:   i.TrailerID,
+			Genres:      i.Genres,
+			Rating:      i.RatingSummary.AggregateRating,
+			VoteCount:   i.RatingSummary.VoteCount,
+			ReleaseYear: i.ReleaseYear,
+			EndYear:     i.EndYear,
 		})
 	}
 

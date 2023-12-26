@@ -1,8 +1,11 @@
 package imdb
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
+
+	"github.com/gocolly/colly/v2"
 )
 
 type SearchData struct {
@@ -26,19 +29,58 @@ type Client struct {
 }
 
 func (c Client) SearchTitle(expr string) (data SearchData, err error) {
-	req, err := http.NewRequest("GET", c.BaseURL+"/find/", nil)
-	if err != nil {
-		return
-	}
 	vals := url.Values{}
 	vals.Set("q", expr)
-	req.URL.RawQuery = vals.Encode()
+	vals.Set("s", "tt") // search type 'title' I guess
 
-	resp, err := c.HTTP.Do(req)
+	var b []byte
+
+	coll := colly.NewCollector()
+
+	coll.OnHTML("script#__NEXT_DATA__", func(h *colly.HTMLElement) {
+		b = []byte(h.Text)
+	})
+
+	err = coll.Visit(c.BaseURL + "/find/?" + vals.Encode())
 	if err != nil {
 		return
 	}
-	defer resp.Body.Close()
 
-	return SearchData{}, err
+	dto := struct {
+		Props struct {
+			PageProps struct {
+				TitleResults struct {
+					Results []struct {
+						ID                    string `json:"id"`
+						ImageType             string `json:"imageType"`
+						TitleNameText         string `json:"titleNameText"`
+						TitlePosterImageModel struct {
+							Caption   string `json:"caption"`
+							MaxHeight int    `json:"maxHeight"`
+							MaxWidth  int    `json:"maxWidth"`
+							URL       string `json:"url"`
+						} `json:"titlePosterImageModel"`
+						TitleReleaseText string   `json:"titleReleaseText"`
+						TitleTypeText    string   `json:"titleTypeText"`
+						TopCredits       []string `json:"topCredits"`
+					} `json:"results"`
+				} `json:"titleResults"`
+			} `json:"pageProps"`
+		} `json:"props"`
+	}{}
+
+	err = json.Unmarshal(b, &dto)
+	if err != nil {
+		return
+	}
+
+	for _, r := range dto.Props.PageProps.TitleResults.Results {
+		data.Results = append(data.Results, SearchResult{
+			ID:    r.ID,
+			Image: r.TitlePosterImageModel.URL,
+			Title: r.TitleNameText,
+		})
+	}
+
+	return
 }
